@@ -252,7 +252,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/weather', (req, res) => {
-  const location = req.query.location || 'Ludhiana';
+  const location = req.query.location || 'Farm location';
   res.json({
     location,
     condition: 'Partly cloudy',

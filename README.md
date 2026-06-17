@@ -22,7 +22,7 @@ Backend API: http://localhost:8091/api/health
 ## Available API Endpoints
 
 - `GET /api/health`
-- `GET /api/weather?location=Punjab`
+- `GET /api/weather?location=Your%20Farm%20Location`
 - `POST /api/disease-detection`
 - `POST /api/fertilizer`
 - `POST /api/irrigation`

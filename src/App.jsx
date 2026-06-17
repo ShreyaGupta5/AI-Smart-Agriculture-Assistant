@@ -468,21 +468,38 @@ const diseaseHistory = [
   { crop: 'Corn', issue: 'Healthy', confidence: 97, date: '08 Jun', status: 'No action' }
 ];
 
-const defaultFarmerDetails = {
-  ownerName: 'Shreya Gupta',
-  farmName: 'Shreya Farm',
-  phone: '+91 98765 43210',
-  email: 'shreya.farm@example.com',
-  state: 'Punjab',
-  district: 'Ludhiana',
-  village: 'Model Farm Village',
-  farmSize: '5.2 acres',
-  soilType: 'Loamy soil',
-  irrigation: 'Drip + canal support',
-  primaryCrop: 'Tomato',
-  secondaryCrops: 'Wheat, Rice, Cotton',
-  season: 'Kharif 2026',
-  password: 'farmer123'
+const emptyFarmerDetails = {
+  ownerName: '',
+  farmName: '',
+  phone: '',
+  email: '',
+  state: '',
+  district: '',
+  village: '',
+  farmSize: '',
+  soilType: '',
+  irrigation: '',
+  primaryCrop: '',
+  secondaryCrops: '',
+  season: '',
+  password: ''
+};
+
+const farmerPlaceholders = {
+  ownerName: 'Enter owner name',
+  farmName: 'Enter farm name',
+  phone: 'Enter mobile number',
+  email: 'Enter email address',
+  state: 'Enter state',
+  district: 'Enter district',
+  village: 'Enter village name',
+  farmSize: 'Example: 5 acres',
+  soilType: 'Example: Loamy soil',
+  irrigation: 'Example: Drip irrigation',
+  primaryCrop: 'Example: Tomato',
+  secondaryCrops: 'Example: Wheat, Rice, Cotton',
+  season: 'Example: Kharif 2026',
+  password: 'Create a password'
 };
 
 function buildFarmerAccount(details) {
@@ -493,6 +510,7 @@ function buildFarmerAccount(details) {
 
   return {
     ...details,
+    profileVersion: 2,
     crops: [details.primaryCrop, ...secondaryCrops].filter(Boolean)
   };
 }
@@ -502,17 +520,35 @@ function getFarmerWeatherLocation(farmerProfile) {
     .map((part) => String(part || '').trim())
     .filter(Boolean);
 
-  return parts.join(', ') || String(farmerProfile?.village || '').trim() || 'Ludhiana, Punjab';
+  return parts.join(', ') || String(farmerProfile?.village || '').trim() || 'Farm location';
+}
+
+function isOutdatedFarmerAccount(user) {
+  return Boolean(user && user.profileVersion !== 2);
 }
 
 function App() {
   const [authUser, setAuthUser] = useState(() => {
     try {
       const session = JSON.parse(localStorage.getItem('agriSession')) || null;
+      if (isOutdatedFarmerAccount(session)) {
+        localStorage.removeItem('agriSession');
+        localStorage.removeItem('agriAccount');
+        localStorage.removeItem('agriUser');
+        return null;
+      }
       if (session) return session;
       const oldUser = JSON.parse(localStorage.getItem('agriUser')) || null;
+      if (isOutdatedFarmerAccount(oldUser)) {
+        localStorage.removeItem('agriUser');
+        return null;
+      }
       if (oldUser) {
         localStorage.setItem('agriAccount', JSON.stringify(oldUser));
+      }
+      const savedAccount = JSON.parse(localStorage.getItem('agriAccount')) || null;
+      if (isOutdatedFarmerAccount(savedAccount)) {
+        localStorage.removeItem('agriAccount');
       }
       return null;
     } catch {
@@ -622,8 +658,8 @@ function App() {
 
 function AuthPage({ onAuth }) {
   const [mode, setMode] = useState('register');
-  const [form, setForm] = useState(defaultFarmerDetails);
-  const [login, setLogin] = useState({ email: defaultFarmerDetails.email, password: defaultFarmerDetails.password });
+  const [form, setForm] = useState(emptyFarmerDetails);
+  const [login, setLogin] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
 
   function update(field, value) {
@@ -702,34 +738,34 @@ function AuthPage({ onAuth }) {
         {mode === 'register' ? (
           <form className="auth-form" onSubmit={createAccount}>
             <FormSection title="Farmer Details">
-              <label>Owner name<input value={form.ownerName} onChange={(event) => update('ownerName', event.target.value)} /></label>
-              <label>Farm name<input value={form.farmName} onChange={(event) => update('farmName', event.target.value)} /></label>
-              <label>Phone<input value={form.phone} onChange={(event) => update('phone', event.target.value)} /></label>
-              <label>Email<input type="email" value={form.email} onChange={(event) => update('email', event.target.value)} /></label>
+              <label>Owner name<input value={form.ownerName} placeholder={farmerPlaceholders.ownerName} onChange={(event) => update('ownerName', event.target.value)} /></label>
+              <label>Farm name<input value={form.farmName} placeholder={farmerPlaceholders.farmName} onChange={(event) => update('farmName', event.target.value)} /></label>
+              <label>Phone<input value={form.phone} placeholder={farmerPlaceholders.phone} onChange={(event) => update('phone', event.target.value)} /></label>
+              <label>Email<input type="email" value={form.email} placeholder={farmerPlaceholders.email} onChange={(event) => update('email', event.target.value)} /></label>
             </FormSection>
 
             <FormSection title="Location Details">
-              <label>State<input value={form.state} onChange={(event) => update('state', event.target.value)} /></label>
-              <label>District<input value={form.district} onChange={(event) => update('district', event.target.value)} /></label>
-              <label>Village<input value={form.village} onChange={(event) => update('village', event.target.value)} /></label>
-              <label>Farm size<input value={form.farmSize} onChange={(event) => update('farmSize', event.target.value)} /></label>
+              <label>State<input value={form.state} placeholder={farmerPlaceholders.state} onChange={(event) => update('state', event.target.value)} /></label>
+              <label>District<input value={form.district} placeholder={farmerPlaceholders.district} onChange={(event) => update('district', event.target.value)} /></label>
+              <label>Village<input value={form.village} placeholder={farmerPlaceholders.village} onChange={(event) => update('village', event.target.value)} /></label>
+              <label>Farm size<input value={form.farmSize} placeholder={farmerPlaceholders.farmSize} onChange={(event) => update('farmSize', event.target.value)} /></label>
             </FormSection>
 
             <FormSection title="Crop And Farm Details">
-              <label>Primary crop<input value={form.primaryCrop} onChange={(event) => update('primaryCrop', event.target.value)} /></label>
-              <label>Other crops<input value={form.secondaryCrops} onChange={(event) => update('secondaryCrops', event.target.value)} /></label>
-              <label>Soil type<input value={form.soilType} onChange={(event) => update('soilType', event.target.value)} /></label>
-              <label>Irrigation method<input value={form.irrigation} onChange={(event) => update('irrigation', event.target.value)} /></label>
-              <label>Season<input value={form.season} onChange={(event) => update('season', event.target.value)} /></label>
-              <label>Password<input type="password" value={form.password} onChange={(event) => update('password', event.target.value)} /></label>
+              <label>Primary crop<input value={form.primaryCrop} placeholder={farmerPlaceholders.primaryCrop} onChange={(event) => update('primaryCrop', event.target.value)} /></label>
+              <label>Other crops<input value={form.secondaryCrops} placeholder={farmerPlaceholders.secondaryCrops} onChange={(event) => update('secondaryCrops', event.target.value)} /></label>
+              <label>Soil type<input value={form.soilType} placeholder={farmerPlaceholders.soilType} onChange={(event) => update('soilType', event.target.value)} /></label>
+              <label>Irrigation method<input value={form.irrigation} placeholder={farmerPlaceholders.irrigation} onChange={(event) => update('irrigation', event.target.value)} /></label>
+              <label>Season<input value={form.season} placeholder={farmerPlaceholders.season} onChange={(event) => update('season', event.target.value)} /></label>
+              <label>Password<input type="password" value={form.password} placeholder={farmerPlaceholders.password} onChange={(event) => update('password', event.target.value)} /></label>
             </FormSection>
 
             <button className="primary-button" type="submit"><User size={18} /> Create Farmer Account</button>
           </form>
         ) : (
           <form className="auth-form compact" onSubmit={loginAccount}>
-            <label>Email<input type="email" value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} /></label>
-            <label>Password<input type="password" value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} /></label>
+            <label>Email<input type="email" value={login.email} placeholder={farmerPlaceholders.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} /></label>
+            <label>Password<input type="password" value={login.password} placeholder="Enter password" onChange={(event) => setLogin({ ...login, password: event.target.value })} /></label>
             <button className="primary-button" type="submit"><ShieldCheck size={18} /> Login</button>
           </form>
         )}
@@ -1239,18 +1275,18 @@ function CropSearch({ value, onChange }) {
 
 function Profile({ farmerProfile, onUpdateProfile }) {
   const profileDefaults = {
-    ...defaultFarmerDetails,
+    ...emptyFarmerDetails,
     ...farmerProfile,
-    secondaryCrops: farmerProfile?.secondaryCrops || farmerProfile?.crops?.filter((crop) => crop !== farmerProfile?.primaryCrop).join(', ') || defaultFarmerDetails.secondaryCrops
+    secondaryCrops: farmerProfile?.secondaryCrops || farmerProfile?.crops?.filter((crop) => crop !== farmerProfile?.primaryCrop).join(', ') || ''
   };
   const [editForm, setEditForm] = useState(profileDefaults);
   const [saved, setSaved] = useState('');
 
   useEffect(() => {
     setEditForm({
-      ...defaultFarmerDetails,
+      ...emptyFarmerDetails,
       ...farmerProfile,
-      secondaryCrops: farmerProfile?.secondaryCrops || farmerProfile?.crops?.filter((crop) => crop !== farmerProfile?.primaryCrop).join(', ') || defaultFarmerDetails.secondaryCrops
+      secondaryCrops: farmerProfile?.secondaryCrops || farmerProfile?.crops?.filter((crop) => crop !== farmerProfile?.primaryCrop).join(', ') || ''
     });
   }, [farmerProfile]);
 
@@ -1267,16 +1303,16 @@ function Profile({ farmerProfile, onUpdateProfile }) {
   }
 
   const farmer = {
-    name: farmerProfile?.farmName || 'Shreya Farm',
-    owner: farmerProfile?.ownerName || 'Shreya Gupta',
-    location: [farmerProfile?.village, farmerProfile?.district, farmerProfile?.state].filter(Boolean).join(', ') || 'Ludhiana, Punjab',
-    phone: farmerProfile?.phone || '+91 98765 43210',
-    email: farmerProfile?.email || 'shreya.farm@example.com',
-    farmSize: farmerProfile?.farmSize || '5.2 acres',
-    soilType: farmerProfile?.soilType || 'Loamy soil',
-    irrigation: farmerProfile?.irrigation || 'Drip + canal support',
-    season: farmerProfile?.season || 'Kharif 2026',
-    crops: farmerProfile?.crops?.length ? farmerProfile.crops : ['Tomato', 'Wheat', 'Rice', 'Cotton']
+    name: farmerProfile?.farmName || 'Farm name not added',
+    owner: farmerProfile?.ownerName || 'Owner not added',
+    location: [farmerProfile?.village, farmerProfile?.district, farmerProfile?.state].filter(Boolean).join(', ') || 'Location not added',
+    phone: farmerProfile?.phone || 'Phone not added',
+    email: farmerProfile?.email || 'Email not added',
+    farmSize: farmerProfile?.farmSize || 'Farm size not added',
+    soilType: farmerProfile?.soilType || 'Soil type not added',
+    irrigation: farmerProfile?.irrigation || 'Irrigation method not added',
+    season: farmerProfile?.season || 'Season not added',
+    crops: farmerProfile?.crops?.length ? farmerProfile.crops : []
   };
 
   const cropRecords = farmer.crops.slice(0, 5).map((crop, index) => ({
@@ -1288,9 +1324,9 @@ function Profile({ farmerProfile, onUpdateProfile }) {
   }));
 
   const activities = [
-    'Tomato disease scan completed with 94% confidence',
+    'Crop disease scan completed with AI confidence score',
     'Irrigation plan updated after rainfall alert',
-    'Fertilizer report generated for wheat field',
+    'Fertilizer report generated for selected field',
     'ICAR research link opened from dashboard'
   ];
 
@@ -1299,13 +1335,16 @@ function Profile({ farmerProfile, onUpdateProfile }) {
     { title: 'Fertilizer Plan', meta: 'Last updated today' },
     { title: 'Irrigation Schedule', meta: 'Next watering: tomorrow morning' }
   ];
+  const initials = farmerProfile?.ownerName
+    ? farmerProfile.ownerName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+    : '--';
 
   return (
     <section className="page-grid">
       <Panel title="Farmer Profile">
         <div className="profile-hero">
           <div className="profile-identity">
-            <div className="avatar">SG</div>
+            <div className="avatar">{initials}</div>
             <div>
               <span className="tag"><ShieldCheck size={16} /> Verified farmer</span>
               <h2>{farmer.name}</h2>
@@ -1356,15 +1395,19 @@ function Profile({ farmerProfile, onUpdateProfile }) {
             <span>Status</span>
             <span>Area</span>
           </div>
-          {cropRecords.map((record) => (
-            <div className="profile-table-row" key={`${record.crop}-${record.plot}`}>
-              <strong>{record.crop}</strong>
-              <span>{record.plot}</span>
-              <span>{record.stage}</span>
-              <em>{record.status}</em>
-              <span>{record.area}</span>
-            </div>
-          ))}
+          {cropRecords.length ? (
+            cropRecords.map((record) => (
+              <div className="profile-table-row" key={`${record.crop}-${record.plot}`}>
+                <strong>{record.crop}</strong>
+                <span>{record.plot}</span>
+                <span>{record.stage}</span>
+                <em>{record.status}</em>
+                <span>{record.area}</span>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">No crop records yet. Add crops in the farmer details form.</div>
+          )}
         </div>
       </Panel>
 
@@ -1372,26 +1415,26 @@ function Profile({ farmerProfile, onUpdateProfile }) {
         {saved && <div className="form-alert success">{saved}</div>}
         <form className="profile-edit-form" onSubmit={saveProfile}>
           <FormSection title="Farmer Details">
-            <label>Owner name<input value={editForm.ownerName} onChange={(event) => updateProfileField('ownerName', event.target.value)} /></label>
-            <label>Farm name<input value={editForm.farmName} onChange={(event) => updateProfileField('farmName', event.target.value)} /></label>
-            <label>Phone<input value={editForm.phone} onChange={(event) => updateProfileField('phone', event.target.value)} /></label>
-            <label>Email<input type="email" value={editForm.email} onChange={(event) => updateProfileField('email', event.target.value)} /></label>
+            <label>Owner name<input value={editForm.ownerName} placeholder={farmerPlaceholders.ownerName} onChange={(event) => updateProfileField('ownerName', event.target.value)} /></label>
+            <label>Farm name<input value={editForm.farmName} placeholder={farmerPlaceholders.farmName} onChange={(event) => updateProfileField('farmName', event.target.value)} /></label>
+            <label>Phone<input value={editForm.phone} placeholder={farmerPlaceholders.phone} onChange={(event) => updateProfileField('phone', event.target.value)} /></label>
+            <label>Email<input type="email" value={editForm.email} placeholder={farmerPlaceholders.email} onChange={(event) => updateProfileField('email', event.target.value)} /></label>
           </FormSection>
 
           <FormSection title="Location Details">
-            <label>State<input value={editForm.state} onChange={(event) => updateProfileField('state', event.target.value)} /></label>
-            <label>District<input value={editForm.district} onChange={(event) => updateProfileField('district', event.target.value)} /></label>
-            <label>Village<input value={editForm.village} onChange={(event) => updateProfileField('village', event.target.value)} /></label>
-            <label>Farm size<input value={editForm.farmSize} onChange={(event) => updateProfileField('farmSize', event.target.value)} /></label>
+            <label>State<input value={editForm.state} placeholder={farmerPlaceholders.state} onChange={(event) => updateProfileField('state', event.target.value)} /></label>
+            <label>District<input value={editForm.district} placeholder={farmerPlaceholders.district} onChange={(event) => updateProfileField('district', event.target.value)} /></label>
+            <label>Village<input value={editForm.village} placeholder={farmerPlaceholders.village} onChange={(event) => updateProfileField('village', event.target.value)} /></label>
+            <label>Farm size<input value={editForm.farmSize} placeholder={farmerPlaceholders.farmSize} onChange={(event) => updateProfileField('farmSize', event.target.value)} /></label>
           </FormSection>
 
           <FormSection title="Crop And Farm Details">
-            <label>Primary crop<input value={editForm.primaryCrop} onChange={(event) => updateProfileField('primaryCrop', event.target.value)} /></label>
-            <label>Other crops<input value={editForm.secondaryCrops} onChange={(event) => updateProfileField('secondaryCrops', event.target.value)} /></label>
-            <label>Soil type<input value={editForm.soilType} onChange={(event) => updateProfileField('soilType', event.target.value)} /></label>
-            <label>Irrigation method<input value={editForm.irrigation} onChange={(event) => updateProfileField('irrigation', event.target.value)} /></label>
-            <label>Season<input value={editForm.season} onChange={(event) => updateProfileField('season', event.target.value)} /></label>
-            <label>Password<input type="password" value={editForm.password} onChange={(event) => updateProfileField('password', event.target.value)} /></label>
+            <label>Primary crop<input value={editForm.primaryCrop} placeholder={farmerPlaceholders.primaryCrop} onChange={(event) => updateProfileField('primaryCrop', event.target.value)} /></label>
+            <label>Other crops<input value={editForm.secondaryCrops} placeholder={farmerPlaceholders.secondaryCrops} onChange={(event) => updateProfileField('secondaryCrops', event.target.value)} /></label>
+            <label>Soil type<input value={editForm.soilType} placeholder={farmerPlaceholders.soilType} onChange={(event) => updateProfileField('soilType', event.target.value)} /></label>
+            <label>Irrigation method<input value={editForm.irrigation} placeholder={farmerPlaceholders.irrigation} onChange={(event) => updateProfileField('irrigation', event.target.value)} /></label>
+            <label>Season<input value={editForm.season} placeholder={farmerPlaceholders.season} onChange={(event) => updateProfileField('season', event.target.value)} /></label>
+            <label>Password<input type="password" value={editForm.password} placeholder={farmerPlaceholders.password} onChange={(event) => updateProfileField('password', event.target.value)} /></label>
           </FormSection>
 
           <button className="primary-button" type="submit"><ShieldCheck size={18} /> Save Farmer Details</button>

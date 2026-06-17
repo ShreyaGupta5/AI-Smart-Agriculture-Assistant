@@ -970,6 +970,13 @@ ul {
   font-weight: 900;
 }
 
+.empty-state {
+  border-radius: 8px;
+  background: #f6f9f4;
+  color: #647067;
+  padding: 14px;
+}
+
 .report-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

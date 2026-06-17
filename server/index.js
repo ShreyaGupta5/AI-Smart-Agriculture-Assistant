@@ -419,14 +419,55 @@ function chooseReply(variants, seed, previousReply = '') {
   return variants[index];
 }
 
+const intentKeywords = {
+  disease: ['disease', 'leaf', 'spot', 'spots', 'yellow', 'wilting', 'wilt', 'blight', 'rust', 'mildew', 'rot'],
+  pest: ['pest', 'insect', 'worm', 'borer', 'aphid', 'mites', 'whitefly', 'thrips'],
+  fertilizer: ['fertilizer', 'npk', 'nitrogen', 'phosphorus', 'potassium', 'manure', 'compost', 'soil ph', 'nutrient'],
+  irrigation: ['water', 'irrigation', 'moisture', 'drip', 'rainfall', 'watering'],
+  weather: ['weather', 'rain', 'humidity', 'temperature', 'forecast', 'climate'],
+  season: ['season', 'seasonal', 'sowing', 'planting', 'kharif', 'rabi', 'zaid', 'harvest', 'crop planning', 'crop plan'],
+  yield: ['yield', 'production', 'productivity', 'profit', 'income']
+};
+
+function detectIntent(message) {
+  return Object.entries(intentKeywords).find(([, words]) => hasAny(message, words))?.[0] || '';
+}
+
+function getLastUserMessage(history = []) {
+  return [...history].reverse().find((item) => item.role === 'user')?.text || '';
+}
+
+function isFollowUp(message) {
+  return hasAny(message, [
+    'another',
+    'other',
+    'more',
+    'again',
+    'next',
+    'continue',
+    'detail',
+    'details',
+    'explain',
+    'plan',
+    'option',
+    'suggestion',
+    'provide'
+  ]);
+}
+
 function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
   const message = normalizeText(rawMessage);
-  const crop = findCropName(message, farmerProfile);
+  const previousUserMessage = normalizeText(getLastUserMessage(history));
+  const activeMessage = !detectIntent(message) && isFollowUp(message) && previousUserMessage
+    ? `${previousUserMessage} ${message}`
+    : message;
+  const intent = detectIntent(activeMessage);
+  const crop = findCropName(activeMessage, farmerProfile);
   const disease = diseaseLibrary.find((item) => item.crop.toLowerCase() === String(crop).toLowerCase());
   const fertilizer = fertilizerPlans[crop];
   const water = cropWaterNeeds[crop];
   const previousReply = [...history].reverse().find((item) => item.role === 'assistant')?.text || '';
-  const historySeed = `${message}-${history.length}`;
+  const historySeed = `${activeMessage}-${history.length}`;
   const cropLabel = crop || 'your crop';
 
   if (!message) {
@@ -448,7 +489,7 @@ function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
     };
   }
 
-  if (hasAny(message, ['disease', 'leaf', 'spot', 'spots', 'yellow', 'wilting', 'wilt', 'blight', 'rust', 'mildew', 'rot'])) {
+  if (intent === 'disease') {
     const variants = disease
       ? [
           `${cropLabel}: possible issue is ${disease.disease}. Symptoms to compare: ${disease.symptoms} First actions: ${disease.treatment.slice(0, 2).join(' ')}`,
@@ -462,7 +503,7 @@ function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
     return { intent: 'disease', crop, reply: chooseReply(variants, historySeed, previousReply) };
   }
 
-  if (hasAny(message, ['pest', 'insect', 'worm', 'borer', 'aphid', 'mites', 'whitefly', 'thrips'])) {
+  if (intent === 'pest') {
     return {
       intent: 'pest',
       crop,
@@ -474,7 +515,7 @@ function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
     };
   }
 
-  if (hasAny(message, ['fertilizer', 'npk', 'nitrogen', 'phosphorus', 'potassium', 'manure', 'compost', 'soil ph', 'nutrient'])) {
+  if (intent === 'fertilizer') {
     const variants = fertilizer
       ? [
           `${cropLabel} fertilizer guide: use about ${fertilizer.n}:${fertilizer.p}:${fertilizer.k} kg/ha NPK, split nitrogen into multiple doses, and add ${fertilizer.organic}`,
@@ -488,7 +529,7 @@ function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
     return { intent: 'fertilizer', crop, reply: chooseReply(variants, historySeed, previousReply) };
   }
 
-  if (hasAny(message, ['water', 'irrigation', 'moisture', 'drip', 'rainfall', 'watering'])) {
+  if (intent === 'irrigation') {
     const variants = water
       ? [
           `${cropLabel} irrigation: target around ${water.base} mm per week before weather adjustment. ${water.note} Irrigate early morning and skip watering after useful rainfall.`,
@@ -502,7 +543,7 @@ function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
     return { intent: 'irrigation', crop, reply: chooseReply(variants, historySeed, previousReply) };
   }
 
-  if (hasAny(message, ['weather', 'rain', 'humidity', 'temperature', 'forecast', 'climate'])) {
+  if (intent === 'weather') {
     return {
       intent: 'weather',
       crop,
@@ -514,19 +555,20 @@ function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
     };
   }
 
-  if (hasAny(message, ['season', 'sowing', 'planting', 'kharif', 'rabi', 'zaid', 'harvest'])) {
+  if (intent === 'season') {
     return {
       intent: 'season',
       crop,
       reply: chooseReply([
-        `${cropLabel} seasonal planning depends on local rainfall, temperature, and variety duration. Choose certified seed, prepare drainage, and align sowing with your state agriculture advisory.`,
-        `For ${cropLabel}, plan the season around soil moisture, disease history, and market timing. Keep seed treatment, basal fertilizer, and irrigation setup ready before sowing.`,
-        `${cropLabel} crop calendar tip: record sowing date, expected flowering, fertilizer splits, irrigation windows, and harvest target so the dashboard can track decisions clearly.`
+        `${cropLabel} seasonal planning depends on local rainfall, temperature, and variety duration. Start with certified seed, soil preparation, drainage, and a sowing window matched to your state agriculture advisory.`,
+        `Alternative plan for ${cropLabel}: divide the season into four checks: pre-sowing soil test, sowing with seed treatment, mid-season pest and irrigation review, and pre-harvest disease plus market timing review.`,
+        `For ${cropLabel}, use this crop calendar: record sowing date, expected flowering, fertilizer splits, irrigation windows, pest scouting days, and harvest target so each field decision is trackable.`,
+        `${cropLabel} seasonal option: choose a short-duration variety if rainfall is uncertain, prepare drainage before heavy rain, keep backup irrigation ready, and scout weekly after crop establishment.`
       ], historySeed, previousReply)
     };
   }
 
-  if (hasAny(message, ['yield', 'production', 'productivity', 'profit', 'income'])) {
+  if (intent === 'yield') {
     return {
       intent: 'yield',
       crop,

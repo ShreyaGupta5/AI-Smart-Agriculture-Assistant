@@ -1018,12 +1018,25 @@ function DiseaseDetection({ onDiseaseDetected }) {
 }
 
 function FertilizerAdvisor() {
-  const [form, setForm] = useState({ crop: 'Tomato', soilPh: 6.5, moisture: 55, acreage: 1 });
+  const [form, setForm] = useState({ crop: '', soilPh: '', moisture: '', acreage: '' });
   const [fertilizer, setFertilizer] = useState(null);
   const [irrigation, setIrrigation] = useState(null);
+  const [formError, setFormError] = useState('');
   const theme = getCropTheme(form.crop);
 
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setFormError('');
+  }
+
   async function submit() {
+    if (!form.crop.trim() || !form.soilPh || !form.moisture || !form.acreage) {
+      setFormError('Enter crop name, soil pH, soil moisture, and farm size before generating a plan.');
+      setFertilizer(null);
+      setIrrigation(null);
+      return;
+    }
+
     const [fertRes, irrRes] = await Promise.all([
       fetch(`${API_BASE}/fertilizer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }),
       fetch(`${API_BASE}/irrigation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
@@ -1048,10 +1061,11 @@ function FertilizerAdvisor() {
       <section className="content-grid two crop-tool-grid">
         <Panel title="Crop And Soil Inputs">
           <div className="form-stack">
-            <CropSearch value={form.crop} onChange={(crop) => setForm({ ...form, crop })} />
-            <label>Soil pH<input type="number" step="0.1" value={form.soilPh} onChange={(event) => setForm({ ...form, soilPh: event.target.value })} /></label>
-            <label>Soil moisture (%)<input type="number" value={form.moisture} onChange={(event) => setForm({ ...form, moisture: event.target.value })} /></label>
-            <label>Farm size (acre)<input type="number" step="0.1" value={form.acreage} onChange={(event) => setForm({ ...form, acreage: event.target.value })} /></label>
+            <CropSearch value={form.crop} onChange={(crop) => updateField('crop', crop)} placeholder="Search or enter crop name" />
+            <label>Soil pH<input type="number" step="0.1" value={form.soilPh} placeholder="Example: 6.5" onChange={(event) => updateField('soilPh', event.target.value)} /></label>
+            <label>Soil moisture (%)<input type="number" value={form.moisture} placeholder="Example: 55" onChange={(event) => updateField('moisture', event.target.value)} /></label>
+            <label>Farm size (acre)<input type="number" step="0.1" value={form.acreage} placeholder="Example: 5" onChange={(event) => updateField('acreage', event.target.value)} /></label>
+            {formError && <div className="form-alert">{formError}</div>}
             <button className="primary-button" onClick={submit}><FlaskConical size={18} /> Generate Plan</button>
           </div>
         </Panel>
@@ -1290,7 +1304,7 @@ function Chatbot({ farmerProfile }) {
   );
 }
 
-function CropSearch({ value, onChange }) {
+function CropSearch({ value, onChange, placeholder = 'Search Indian crops, e.g. cotton, mango, chickpea' }) {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1298,6 +1312,12 @@ function CropSearch({ value, onChange }) {
   useEffect(() => {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
+      if (!query.trim()) {
+        setResults([]);
+        setSearching(false);
+        return;
+      }
+
       setSearching(true);
       try {
         const response = await fetch(`${API_BASE}/crops?search=${encodeURIComponent(query)}`, {
@@ -1336,9 +1356,9 @@ function CropSearch({ value, onChange }) {
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            onChange(event.target.value);
-          }}
-          placeholder="Search Indian crops, e.g. cotton, mango, chickpea"
+          onChange(event.target.value);
+        }}
+          placeholder={placeholder}
         />
       </div>
       <div className="crop-results">
@@ -1349,7 +1369,7 @@ function CropSearch({ value, onChange }) {
             <small>{crop.category}</small>
           </button>
         ))}
-        {!searching && results.length === 0 && (
+        {!searching && query.trim() && results.length === 0 && (
           <span className="crop-result muted">No exact match. You can still type the crop name manually.</span>
         )}
       </div>

@@ -315,8 +315,14 @@ app.post('/api/disease-detection', (req, res) => {
 });
 
 app.post('/api/fertilizer', (req, res) => {
-  const crop = req.body.crop || 'Tomato';
-  const soilPh = Number(req.body.soilPh || 6.5);
+  const crop = String(req.body.crop || '').trim();
+  if (!crop) {
+    return res.status(400).json({ error: 'Crop name is required to generate a fertilizer plan.' });
+  }
+  if (req.body.soilPh === undefined || req.body.soilPh === '') {
+    return res.status(400).json({ error: 'Soil pH is required to generate a fertilizer plan.' });
+  }
+  const soilPh = Number(req.body.soilPh);
   const plan = fertilizerPlans[crop] || {
     n: 60,
     p: 40,
@@ -347,9 +353,15 @@ app.post('/api/fertilizer', (req, res) => {
 });
 
 app.post('/api/irrigation', (req, res) => {
-  const crop = req.body.crop || 'Tomato';
-  const acreage = Number(req.body.acreage || 1);
-  const moisture = Number(req.body.moisture || 55);
+  const crop = String(req.body.crop || '').trim();
+  if (!crop) {
+    return res.status(400).json({ error: 'Crop name is required to generate an irrigation plan.' });
+  }
+  if (req.body.acreage === undefined || req.body.acreage === '' || req.body.moisture === undefined || req.body.moisture === '') {
+    return res.status(400).json({ error: 'Farm size and soil moisture are required to generate an irrigation plan.' });
+  }
+  const acreage = Number(req.body.acreage);
+  const moisture = Number(req.body.moisture);
   const profile = cropWaterNeeds[crop] || {
     base: 24,
     soil: 'Field-specific soil',

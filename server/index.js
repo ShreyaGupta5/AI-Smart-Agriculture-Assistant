@@ -374,21 +374,189 @@ app.post('/api/irrigation', (req, res) => {
   });
 });
 
-app.post('/api/chat', (req, res) => {
-  const message = String(req.body.message || '').toLowerCase();
-  let reply = 'Share the crop, growth stage, soil condition, and visible symptoms so I can suggest a more precise action plan.';
+function normalizeText(value = '') {
+  return String(value).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
-  if (message.includes('pest')) {
-    reply = 'Start with field scouting: check leaf undersides and new growth. Use pheromone traps where available, remove heavily infested parts, and choose targeted bio-pesticides before broad-spectrum sprays.';
-  } else if (message.includes('water') || message.includes('irrigation')) {
-    reply = 'Irrigate early in the morning, avoid wetting leaves when disease risk is high, and use soil moisture as the main trigger instead of a fixed calendar.';
-  } else if (message.includes('fertilizer') || message.includes('npk')) {
-    reply = 'Use soil-test-based NPK, split nitrogen applications, and add organic matter to improve nutrient retention. Tell me your crop and soil pH for a focused recommendation.';
-  } else if (message.includes('disease') || message.includes('leaf')) {
-    reply = 'Take a clear photo of the affected leaf, isolate badly infected plants, avoid overhead irrigation, and compare symptoms such as spots, wilting, yellowing, or powdery growth.';
+function findCropName(message, farmerProfile = {}) {
+  const normalized = normalizeText(message);
+  const profileCrops = [
+    farmerProfile.primaryCrop,
+    ...(Array.isArray(farmerProfile.crops) ? farmerProfile.crops : [])
+  ].filter(Boolean);
+
+  const matchedCatalogCrop = cropCatalog.find((crop) => normalized.includes(crop.name.toLowerCase()));
+  if (matchedCatalogCrop) return matchedCatalogCrop.name;
+
+  const matchedProfileCrop = profileCrops.find((crop) => normalized.includes(String(crop).toLowerCase()));
+  if (matchedProfileCrop) return matchedProfileCrop;
+
+  return profileCrops[0] || '';
+}
+
+function hasAny(message, words) {
+  return words.some((word) => {
+    const normalizedWord = normalizeText(word);
+    if (normalizedWord.includes(' ')) return message.includes(normalizedWord);
+    return message.split(' ').includes(normalizedWord);
+  });
+}
+
+function getResponseIndex(seed, length) {
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 9973;
+  }
+  return hash % length;
+}
+
+function chooseReply(variants, seed, previousReply = '') {
+  if (!variants.length) return '';
+  let index = getResponseIndex(seed, variants.length);
+  if (variants.length > 1 && variants[index] === previousReply) {
+    index = (index + 1) % variants.length;
+  }
+  return variants[index];
+}
+
+function buildChatReply({ rawMessage, history = [], farmerProfile = {} }) {
+  const message = normalizeText(rawMessage);
+  const crop = findCropName(message, farmerProfile);
+  const disease = diseaseLibrary.find((item) => item.crop.toLowerCase() === String(crop).toLowerCase());
+  const fertilizer = fertilizerPlans[crop];
+  const water = cropWaterNeeds[crop];
+  const previousReply = [...history].reverse().find((item) => item.role === 'assistant')?.text || '';
+  const historySeed = `${message}-${history.length}`;
+  const cropLabel = crop || 'your crop';
+
+  if (!message) {
+    return {
+      intent: 'empty',
+      crop,
+      reply: 'Please type a farming question, for example: tomato leaf spots, rice irrigation, wheat fertilizer, or pest control.'
+    };
   }
 
-  res.json({ reply });
+  if (hasAny(message, ['hello', 'hi', 'namaste', 'hey'])) {
+    return {
+      intent: 'greeting',
+      crop,
+      reply: chooseReply([
+        'Namaste. Tell me the crop name and the problem you are seeing, and I will suggest the next practical step.',
+        'Hello. Ask about disease, pests, fertilizer, irrigation, weather risk, or seasonal crop planning.'
+      ], historySeed, previousReply)
+    };
+  }
+
+  if (hasAny(message, ['disease', 'leaf', 'spot', 'spots', 'yellow', 'wilting', 'wilt', 'blight', 'rust', 'mildew', 'rot'])) {
+    const variants = disease
+      ? [
+          `${cropLabel}: possible issue is ${disease.disease}. Symptoms to compare: ${disease.symptoms} First actions: ${disease.treatment.slice(0, 2).join(' ')}`,
+          `For ${cropLabel}, check whether symptoms match ${disease.disease}. Keep leaves dry, remove badly affected material, and follow this treatment: ${disease.treatment.join(' ')}`,
+          `Disease guidance for ${cropLabel}: inspect both leaf surfaces, compare with ${disease.disease}, and act early. ${disease.treatment[0]} ${disease.treatment[2] || disease.treatment[1]}`
+        ]
+      : [
+          `For ${cropLabel}, take a clear photo in Disease Detection and inspect for spots, yellowing, wilting, pests, nutrient deficiency, and water stress. Keep infected plants separate while confirming the cause.`,
+          `I do not have a crop-specific disease model for ${cropLabel} yet. Start with field scouting, check leaf underside symptoms, reduce leaf wetness, and consult local extension support if disease spreads.`
+        ];
+    return { intent: 'disease', crop, reply: chooseReply(variants, historySeed, previousReply) };
+  }
+
+  if (hasAny(message, ['pest', 'insect', 'worm', 'borer', 'aphid', 'mites', 'whitefly', 'thrips'])) {
+    return {
+      intent: 'pest',
+      crop,
+      reply: chooseReply([
+        `For ${cropLabel}, start with integrated pest management: inspect leaf undersides, count pest density, remove heavily infested parts, use traps where suitable, and spray only when pest levels cross the local threshold.`,
+        `${cropLabel} pest plan: scout early morning, identify the pest before spraying, protect beneficial insects, and prefer neem or targeted bio-pesticides before broad-spectrum chemicals.`,
+        `If pests are active in ${cropLabel}, check new growth and undersides first. Use pheromone or sticky traps where relevant, avoid repeated same-chemical sprays, and keep records of pest pressure.`
+      ], historySeed, previousReply)
+    };
+  }
+
+  if (hasAny(message, ['fertilizer', 'npk', 'nitrogen', 'phosphorus', 'potassium', 'manure', 'compost', 'soil ph', 'nutrient'])) {
+    const variants = fertilizer
+      ? [
+          `${cropLabel} fertilizer guide: use about ${fertilizer.n}:${fertilizer.p}:${fertilizer.k} kg/ha NPK, split nitrogen into multiple doses, and add ${fertilizer.organic}`,
+          `For ${cropLabel}, base fertilizer on soil testing. A demo plan is N ${fertilizer.n}, P ${fertilizer.p}, K ${fertilizer.k} kg/ha. Keep organic matter high: ${fertilizer.organic}`,
+          `${cropLabel} nutrition: avoid one-time heavy nitrogen. Apply phosphorus and potassium near planting, split nitrogen by crop stage, and use this organic support: ${fertilizer.organic}`
+        ]
+      : [
+          `For ${cropLabel}, use a soil test first. As a safe general plan, add well-decomposed compost, avoid excess nitrogen, and split fertilizer according to crop stage.`,
+          `${cropLabel} fertilizer should be soil-test based. Share soil pH, crop stage, and farm size for a tighter NPK recommendation.`
+        ];
+    return { intent: 'fertilizer', crop, reply: chooseReply(variants, historySeed, previousReply) };
+  }
+
+  if (hasAny(message, ['water', 'irrigation', 'moisture', 'drip', 'rainfall', 'watering'])) {
+    const variants = water
+      ? [
+          `${cropLabel} irrigation: target around ${water.base} mm per week before weather adjustment. ${water.note} Irrigate early morning and skip watering after useful rainfall.`,
+          `For ${cropLabel}, use soil moisture as the trigger. Demo need is ${water.base} mm/week on ${water.soil}. Mulch and drip irrigation will reduce water loss.`,
+          `${cropLabel} water advice: avoid both stress and standing water. ${water.note} Check the topsoil before irrigation and water before heat builds up.`
+        ]
+      : [
+          `For ${cropLabel}, irrigate by soil moisture rather than a fixed calendar. Water early morning, avoid wetting leaves during disease risk, and reduce irrigation after rainfall.`,
+          `${cropLabel} water requirement depends on soil and growth stage. Share soil type and moisture percentage for a better irrigation estimate.`
+        ];
+    return { intent: 'irrigation', crop, reply: chooseReply(variants, historySeed, previousReply) };
+  }
+
+  if (hasAny(message, ['weather', 'rain', 'humidity', 'temperature', 'forecast', 'climate'])) {
+    return {
+      intent: 'weather',
+      crop,
+      reply: chooseReply([
+        `For ${cropLabel}, high humidity and rain increase fungal disease risk. Avoid spraying before rain, improve airflow, and inspect leaves after wet weather.`,
+        `Weather plan for ${cropLabel}: irrigate less if rainfall is expected, schedule fertilizer before light irrigation, and delay field operations during heavy rain or strong wind.`,
+        `Use the dashboard weather card for your saved farm location. If humidity stays high, scout ${cropLabel} twice a week for early disease symptoms.`
+      ], historySeed, previousReply)
+    };
+  }
+
+  if (hasAny(message, ['season', 'sowing', 'planting', 'kharif', 'rabi', 'zaid', 'harvest'])) {
+    return {
+      intent: 'season',
+      crop,
+      reply: chooseReply([
+        `${cropLabel} seasonal planning depends on local rainfall, temperature, and variety duration. Choose certified seed, prepare drainage, and align sowing with your state agriculture advisory.`,
+        `For ${cropLabel}, plan the season around soil moisture, disease history, and market timing. Keep seed treatment, basal fertilizer, and irrigation setup ready before sowing.`,
+        `${cropLabel} crop calendar tip: record sowing date, expected flowering, fertilizer splits, irrigation windows, and harvest target so the dashboard can track decisions clearly.`
+      ], historySeed, previousReply)
+    };
+  }
+
+  if (hasAny(message, ['yield', 'production', 'productivity', 'profit', 'income'])) {
+    return {
+      intent: 'yield',
+      crop,
+      reply: chooseReply([
+        `To improve ${cropLabel} yield, focus on healthy seed, balanced NPK, timely irrigation, early pest scouting, and removing disease sources before they spread.`,
+        `${cropLabel} productivity usually drops from late disease detection, poor moisture timing, and unbalanced nitrogen. Track crop stage and act before visible stress becomes severe.`,
+        `For better ${cropLabel} output, compare each plot by sowing date, soil type, irrigation method, disease history, and fertilizer schedule, then correct the weakest factor first.`
+      ], historySeed, previousReply)
+    };
+  }
+
+  return {
+    intent: 'general',
+    crop,
+    reply: chooseReply([
+      `For ${cropLabel}, I can help with disease symptoms, pest control, fertilizer, irrigation, weather risk, and crop planning. Tell me the issue you see in the field.`,
+      `Please share the crop, growth stage, soil condition, and visible symptoms. I will turn that into a practical checklist instead of a generic answer.`,
+      `I can guide ${cropLabel} better if you mention one topic: leaf disease, insects, watering, NPK fertilizer, rainfall risk, or sowing season.`
+    ], historySeed, previousReply)
+  };
+}
+
+app.post('/api/chat', (req, res) => {
+  const result = buildChatReply({
+    rawMessage: req.body.message,
+    history: Array.isArray(req.body.history) ? req.body.history : [],
+    farmerProfile: req.body.farmerProfile || {}
+  });
+
+  res.json(result);
 });
 
 app.get('*', (_req, res) => {

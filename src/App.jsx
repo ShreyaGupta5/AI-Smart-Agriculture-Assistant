@@ -968,7 +968,7 @@ function CropToolShell({ crop, theme, icon: Icon, title, subtitle, children }) {
   );
 }
 
-function Chatbot() {
+function Chatbot({ farmerProfile }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Namaste. Ask me about disease symptoms, irrigation, fertilizer, pests, or seasonal crop planning.' }
   ]);
@@ -1096,7 +1096,11 @@ function Chatbot() {
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: prompt })
+        body: JSON.stringify({
+          message: prompt,
+          history: nextMessages.slice(-8),
+          farmerProfile
+        })
       });
 
       if (!response.ok) {

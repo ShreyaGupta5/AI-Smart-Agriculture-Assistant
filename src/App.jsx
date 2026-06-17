@@ -462,12 +462,6 @@ const navItems = [
   { id: 'profile', label: 'Profile', icon: User }
 ];
 
-const diseaseHistory = [
-  { crop: 'Tomato', issue: 'Early Blight', confidence: 94, date: '12 Jun', status: 'Treatment started' },
-  { crop: 'Rice', issue: 'Leaf Blast', confidence: 88, date: '10 Jun', status: 'Monitoring' },
-  { crop: 'Corn', issue: 'Healthy', confidence: 97, date: '08 Jun', status: 'No action' }
-];
-
 const emptyFarmerDetails = {
   ownerName: '',
   farmName: '',
@@ -527,6 +521,56 @@ function isOutdatedFarmerAccount(user) {
   return Boolean(user && user.profileVersion !== 2);
 }
 
+function getFarmerHistoryKey(farmerProfile) {
+  const identity = farmerProfile?.email || farmerProfile?.phone || farmerProfile?.ownerName || '';
+  return String(identity).trim().toLowerCase();
+}
+
+function getDiseaseHistoryStorageKey(farmerProfile) {
+  const identity = getFarmerHistoryKey(farmerProfile);
+  return identity ? `agriDiseaseHistory:${encodeURIComponent(identity)}` : '';
+}
+
+function loadDiseaseHistory(farmerProfile) {
+  const storageKey = getDiseaseHistoryStorageKey(farmerProfile);
+  if (!storageKey) return [];
+
+  try {
+    return JSON.parse(localStorage.getItem(storageKey)) || [];
+  } catch {
+    localStorage.removeItem(storageKey);
+    return [];
+  }
+}
+
+function saveDiseaseHistory(farmerProfile, history) {
+  const storageKey = getDiseaseHistoryStorageKey(farmerProfile);
+  if (!storageKey) return;
+  localStorage.setItem(storageKey, JSON.stringify(history));
+}
+
+function getAccountStorageKey(account) {
+  return String(account?.email || '').trim().toLowerCase();
+}
+
+function loadFarmerAccounts() {
+  try {
+    return JSON.parse(localStorage.getItem('agriAccounts')) || {};
+  } catch {
+    localStorage.removeItem('agriAccounts');
+    return {};
+  }
+}
+
+function saveFarmerAccount(account) {
+  const accountKey = getAccountStorageKey(account);
+  if (!accountKey) return;
+  const accounts = loadFarmerAccounts();
+  accounts[accountKey] = account;
+  localStorage.setItem('agriAccounts', JSON.stringify(accounts));
+  localStorage.setItem('agriAccount', JSON.stringify(account));
+}
+
 function App() {
   const [authUser, setAuthUser] = useState(() => {
     try {
@@ -558,6 +602,7 @@ function App() {
   const [active, setActive] = useState('dashboard');
   const [weather, setWeather] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const [accountDiseaseHistory, setAccountDiseaseHistory] = useState(() => loadDiseaseHistory(authUser));
 
   const weatherLocation = getFarmerWeatherLocation(authUser);
 
@@ -568,6 +613,10 @@ function App() {
       .catch(() => setWeather(null));
   }, [weatherLocation]);
 
+  useEffect(() => {
+    setAccountDiseaseHistory(loadDiseaseHistory(authUser));
+  }, [authUser]);
+
   const ActivePage = {
     dashboard: Dashboard,
     detect: DiseaseDetection,
@@ -577,16 +626,26 @@ function App() {
   }[active];
 
   function handleAuth(user) {
-    localStorage.setItem('agriAccount', JSON.stringify(user));
+    saveFarmerAccount(user);
     localStorage.setItem('agriSession', JSON.stringify(user));
     setAuthUser(user);
     setActive('dashboard');
   }
 
   function handleProfileUpdate(updatedProfile) {
-    localStorage.setItem('agriAccount', JSON.stringify(updatedProfile));
+    const currentHistory = accountDiseaseHistory;
+    saveFarmerAccount(updatedProfile);
     localStorage.setItem('agriSession', JSON.stringify(updatedProfile));
     setAuthUser(updatedProfile);
+    saveDiseaseHistory(updatedProfile, currentHistory);
+  }
+
+  function handleDiseaseDetected(record) {
+    setAccountDiseaseHistory((current) => {
+      const nextHistory = [record, ...current].slice(0, 30);
+      saveDiseaseHistory(authUser, nextHistory);
+      return nextHistory;
+    });
   }
 
   function logout() {
@@ -650,7 +709,13 @@ function App() {
           </div>
         </header>
         {mobileNav && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
-        <ActivePage weather={weather} farmerProfile={authUser} onUpdateProfile={handleProfileUpdate} />
+        <ActivePage
+          weather={weather}
+          farmerProfile={authUser}
+          diseaseHistory={accountDiseaseHistory}
+          onDiseaseDetected={handleDiseaseDetected}
+          onUpdateProfile={handleProfileUpdate}
+        />
       </main>
     </div>
   );
@@ -674,7 +739,7 @@ function AuthPage({ onAuth }) {
     }
     setError('');
     const account = buildFarmerAccount(form);
-    localStorage.setItem('agriAccount', JSON.stringify(account));
+    saveFarmerAccount(account);
     setLogin({ email: account.email, password: account.password });
     setMode('login');
     setError('Account created. Login with your email and password.');
@@ -682,7 +747,9 @@ function AuthPage({ onAuth }) {
 
   function loginAccount(event) {
     event.preventDefault();
-    const saved = localStorage.getItem('agriAccount');
+    const accounts = loadFarmerAccounts();
+    const savedAccount = accounts[login.email.trim().toLowerCase()];
+    const saved = savedAccount ? JSON.stringify(savedAccount) : localStorage.getItem('agriAccount');
     if (!saved) {
       setError('No account found. Create a farmer account first.');
       setMode('register');
@@ -783,7 +850,7 @@ function FormSection({ title, children }) {
   );
 }
 
-function Dashboard({ weather }) {
+function Dashboard({ weather, diseaseHistory = [] }) {
   const lineData = useMemo(() => ({
     labels: weather?.forecast?.map((item) => item.day) || [],
     datasets: [
@@ -857,22 +924,26 @@ function Dashboard({ weather }) {
 
       <Panel title="Disease History">
         <div className="table">
-          {diseaseHistory.map((row) => (
-            <div className="table-row" key={`${row.crop}-${row.date}`}>
-              <span>{row.crop}</span>
-              <strong>{row.issue}</strong>
-              <span>{row.confidence}% confidence</span>
-              <span>{row.date}</span>
-              <em>{row.status}</em>
-            </div>
-          ))}
+          {diseaseHistory.length ? (
+            diseaseHistory.map((row) => (
+              <div className="table-row" key={row.id}>
+                <span>{row.crop}</span>
+                <strong>{row.issue}</strong>
+                <span>{row.confidence}% confidence</span>
+                <span>{row.date}</span>
+                <em>{row.status}</em>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">No disease history found yet</div>
+          )}
         </div>
       </Panel>
     </section>
   );
 }
 
-function DiseaseDetection() {
+function DiseaseDetection({ onDiseaseDetected }) {
   const [crop, setCrop] = useState('Tomato');
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
@@ -886,7 +957,20 @@ function DiseaseDetection() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ crop, imageName: file?.name })
     });
-    setResult(await response.json());
+    const analysis = await response.json();
+    setResult(analysis);
+    onDiseaseDetected?.({
+      id: `${Date.now()}-${analysis.crop || crop}`,
+      crop: analysis.crop || crop,
+      issue: analysis.disease || 'Crop Health Review',
+      confidence: analysis.confidence || 0,
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      status: analysis.severity === 'High'
+        ? 'Treatment needed'
+        : analysis.severity === 'Medium'
+          ? 'Monitoring'
+          : 'No action'
+    });
     setLoading(false);
   }
 

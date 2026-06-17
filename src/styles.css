@@ -683,6 +683,11 @@ input {
   gap: 13px;
 }
 
+.profile-edit-form {
+  display: grid;
+  gap: 16px;
+}
+
 .severity {
   justify-self: start;
   border-radius: 999px;
